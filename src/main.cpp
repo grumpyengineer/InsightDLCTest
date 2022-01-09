@@ -21,18 +21,14 @@ void PrintHex8(uint8_t data) // prints 8-bit data in hex with leading zeroes
 
 void dlcInit(void)
 {
-    Serial1.write(0x68);  
-    Serial1.write(0x6a);
-    Serial1.write(0xf5);
-    Serial1.write(0xaf);
-    Serial1.write(0xbf);
-    Serial1.write(0xb3);
-    Serial1.write(0xb2);
-    Serial1.write(0xc1);
-    Serial1.write(0xdb);
-    Serial1.write(0xb3);
-    Serial1.write(0xe9);
+    uint8_t message[10] = {0x68, 0x6a, 0xf5, 0xaf, 0xbf, 0xb3, 0xb2, 0xc1, 0xdb, 0xb3};
+
+    // Send the init DLC message over the OBD
+    bool res = obd.request(&message, 10, 4);
+
     delay(300);
+
+    // Flush the serial buffer just to be sure
     while(Serial1.available()) 
     {
         Serial1.read();
@@ -41,10 +37,9 @@ void dlcInit(void)
 
 int8_t dlcRead(uint8_t address, uint8_t length, uint8_t * rxData) 
 {
-    uint8_t crc;
     uint32_t timeout = millis() + 250; // timeout @ 250 ms
     int8_t byteCount;
-    uint8_t data;
+    uint8_t data, crc;
 
     // Calculate CRC
     crc = 0x20;
@@ -54,20 +49,23 @@ int8_t dlcRead(uint8_t address, uint8_t length, uint8_t * rxData)
     crc = crc - 0x01;
     crc = 0xff - crc;
 
+    // As we will be reading our own transmitted message
+    // Start at -5
     byteCount = -5;
 
-    Serial1.write(0x20);     // header/cmd read memory
-    Serial1.write(0x05);        // num of bytes to send
-    Serial1.write(address);  // address
-    Serial1.write(length);  // num of bytes to read
-    Serial1.write(crc);  // checksum
+    // Send the DLC request
+    Serial1.write(0x20);    // Read memory
+    Serial1.write(0x05);    // Number of bytes to send
+    Serial1.write(address); // Memory address
+    Serial1.write(length);  // Number of bytes to read
+    Serial1.write(crc);     // Checksum
 
     while (byteCount < (length + 3) && millis() < timeout) 
     {
         if (Serial1.available()) 
         {
             data = Serial1.read();
-            if(byteCount > 0)
+            if(byteCount > 0) // We've read back the transmitted message, the rest is real data!
                 rxData[byteCount] = data;
             byteCount++;
         }
@@ -84,10 +82,12 @@ void setup()
 
     obd.begin(Serial1, RX_PIN, TX_PIN);
 
+    // Init the OBD first
     bool init_success =  obd.init();
     Serial.print("OBD2 init_success: ");
     Serial.println(init_success);
 
+    // Then switch to DLC
     delay(500);
     dlcInit();
 
