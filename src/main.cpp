@@ -33,6 +33,10 @@ void dlcInit(void)
     Serial1.write(0xb3);
     Serial1.write(0xe9);
     delay(300);
+    while(Serial1.available()) 
+    {
+        Serial1.read();
+    }
 }
 
 int8_t dlcRead(uint8_t address, uint8_t length, uint8_t * rxData) 
@@ -58,19 +62,16 @@ int8_t dlcRead(uint8_t address, uint8_t length, uint8_t * rxData)
     Serial1.write(length);  // num of bytes to read
     Serial1.write(crc);  // checksum
 
-    Serial.print("Data: ");
     while (byteCount < (length + 3) && millis() < timeout) 
     {
         if (Serial1.available()) 
         {
-            byteCount++;
             data = Serial1.read();
-            PrintHex8(data);
-            if(byteCount >= 0)
+            if(byteCount > 0)
                 rxData[byteCount] = data;
+            byteCount++;
         }
     }
-    Serial.println("END");
 
     return byteCount;
 }
@@ -96,18 +97,33 @@ void setup()
 
 void loop() 
 {
-    uint8_t rxData[2];
+    uint8_t rxData[6];
     int8_t res;
     
+    // Get Clutch and Brake Pedal
     res = dlcRead(0x08, 0x02, rxData);
 
     if(res > 0)
     {
-        Serial.print("Got Bytes: ");
-        Serial.print(res);
-        Serial.print(" Got Data: ");
-        PrintHex8(rxData[0]);
-        PrintHex8(rxData[1]);
+        Serial.print("Brake Pedal: ");
+        if(rxData[2] & 0x08)
+            Serial.println("Pressed");
+        else   
+            Serial.println(" ");
+        Serial.print("Clutch Pedal: ");
+        if(rxData[3] & 0x02)
+            Serial.println("Pressed");
+        else   
+            Serial.println(" ");            
+    }
+
+    res = dlcRead(0x14, 0x01, rxData);
+
+    if(res > 0)
+    {
+        Serial.print("TPS: ");
+        Serial.print((double)(rxData[2]/2.6));
+        Serial.println("%");
     }
     delay(1000);
 }
